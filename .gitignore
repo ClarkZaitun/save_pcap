@@ -1,0 +1,47 @@
+# Compiled files
+/target
+**/*.rs.bk
+
+# Build outputs
+*.o
+*.so
+*.dylib
+*.dll
+
+# Cargo files
+Cargo.lock
+
+# IDE directories and files
+.idea/
+.vscode/
+*.swp
+*.swo
+*~
+
+# OS generated files
+.DS_Store
+.DS_Store?
+._*
+.Spotlight-V100
+.Trashes
+ehthumbs.db
+Thumbs.db
+
+# Log files
+*.log
+
+# Environment variables
+.env
+.env.local
+.env.development.local
+.env.test.local
+.env.production.local
+
+# Temporary files
+*.tmp
+*.temp
+.cache/
+
+*.pcap
+*.pcapng
+*.pcapng.gz

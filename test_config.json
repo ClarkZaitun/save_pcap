@@ -1,0 +1,9 @@
+{
+  "device_name": "your_network_device",
+  "file_prefix": "test_config",
+  "file_path": "./",
+  "file_format": "pcap",
+  "packet_limit": 10,
+  "snaplen": 65535,
+  "timeout_ms": 1000
+}

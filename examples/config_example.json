@@ -1,0 +1,9 @@
+{
+  "device_name": "your_network_device",
+  "file_prefix": "capture",
+  "file_path": "./captures/",
+  "file_format": "pcap",
+  "packet_limit": 100,
+  "snaplen": 65535,
+  "timeout_ms": 1000
+}
