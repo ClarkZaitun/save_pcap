@@ -10,6 +10,10 @@ fn main() {
         packet_limit: Some(100), // 只捕获100个包就停止，避免长时间运行
         snaplen: 65535,
         timeout_ms: 1000,
+        continuous_capture: false,   // 禁用持续捕获
+        rollover_time_seconds: None, // 无时间滚动
+        rollover_packet_count: None, // 无数据包数量滚动
+        rollover_file_size_mb: None, // 无文件大小滚动
     };
 
     // 创建捕获器并开始捕获

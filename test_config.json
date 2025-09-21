@@ -5,5 +5,9 @@
   "file_format": "pcap",
   "packet_limit": 10,
   "snaplen": 65535,
-  "timeout_ms": 1000
+  "timeout_ms": 1000,
+  "continuous_capture": false,
+  "rollover_time_seconds": null,
+  "rollover_packet_count": null,
+  "rollover_file_size_mb": null
 }

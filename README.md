@@ -14,6 +14,10 @@ A cross-platform library written in Rust for capturing network frames from a spe
 - Easy-to-use API
 - Support for logging output
 - Automatic detection of available network devices
+- Continuous capture with file rollover functionality
+  - Time-based rollover (e.g., create new file every X seconds)
+  - Packet count-based rollover (e.g., create new file after X packets)
+  - File size-based rollover (e.g., create new file after X MB)
 
 ## Installation
 
@@ -43,6 +47,10 @@ fn main() {
         packet_limit: Some(1000), // Optional, limit to capturing 1000 packets
         snaplen: 65535, // Default capture length
         timeout_ms: 1000, // Default timeout in milliseconds
+        continuous_capture: false, // Disable continuous capture
+        rollover_time_seconds: None, // No time-based rollover
+        rollover_packet_count: None, // No packet count-based rollover
+        rollover_file_size_mb: None, // No file size-based rollover
     };
     
     // Create capturer and start capturing
@@ -54,6 +62,39 @@ fn main() {
     }
 }
 ```
+
+### Using Continuous Capture with File Rollover
+
+This example demonstrates how to use the continuous capture feature with file rollover based on time, packet count, or file size.
+
+```rust
+use save_pcap::{FileFormat, PcapCaptureOptions, PcapCapturer};
+
+fn main() {
+    // Create capture options with continuous capture and rollover settings
+    let options = PcapCaptureOptions {
+        device_name: "eth0".to_string(), // Replace with your network interface
+        file_prefix: "continuous_capture".to_string(),
+        file_path: "./".to_string(),
+        file_format: FileFormat::Pcap,
+        packet_limit: None, // No packet limit for continuous capture
+        snaplen: 65535,
+        timeout_ms: 1000,
+        continuous_capture: true, // Enable continuous capture
+        rollover_time_seconds: Some(3600), // Create new file every hour
+        rollover_packet_count: Some(10000), // Or when 10,000 packets are captured
+        rollover_file_size_mb: Some(100), // Or when file size reaches 100 MB
+    };
+    
+    // Create capturer and start continuous capturing
+    let capturer = PcapCapturer::new(options);
+    
+    println!("Starting continuous capture. Press Ctrl+C to stop.");
+    match capturer.capture() {
+        Ok(_) => println!("Capture completed successfully"),
+        Err(e) => eprintln!("Error: {}", e),
+    }
+}
 
 ### Using Command Line Arguments and Configuration Files
 
@@ -177,6 +218,10 @@ pub struct PcapCaptureOptions {
     pub packet_limit: Option<usize>, // Packet limit (optional)
     pub snaplen: i32,            // Capture length
     pub timeout_ms: i32,         // Timeout in milliseconds
+    pub continuous_capture: bool, // Enable continuous capture with rollover
+    pub rollover_time_seconds: Option<u64>, // Time interval for file rollover (seconds)
+    pub rollover_packet_count: Option<usize>, // Packet count for file rollover
+    pub rollover_file_size_mb: Option<u64>, // File size for file rollover (MB)
 }
 ```
 
@@ -192,6 +237,10 @@ let options = PcapCaptureOptions::default();
 // packet_limit: None,
 // snaplen: 65535,
 // timeout_ms: 1000,
+// continuous_capture: false,
+// rollover_time_seconds: None,
+// rollover_packet_count: None,
+// rollover_file_size_mb: None,
 ```
 
 ### FileFormat

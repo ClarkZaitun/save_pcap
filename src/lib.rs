@@ -45,6 +45,11 @@ pub struct PcapCaptureOptions {
     pub packet_limit: Option<usize>,
     pub snaplen: i32,
     pub timeout_ms: i32,
+    // 滚动保存相关参数
+    pub continuous_capture: bool,             // 是否持续捕获
+    pub rollover_time_seconds: Option<u64>,   // 滚动时间间隔（秒）
+    pub rollover_packet_count: Option<usize>, // 每个文件最多保存的数据包数
+    pub rollover_file_size_mb: Option<u64>,   // 每个文件最大大小（MB）
 }
 
 impl Default for PcapCaptureOptions {
@@ -57,6 +62,10 @@ impl Default for PcapCaptureOptions {
             packet_limit: None,
             snaplen: 65535,
             timeout_ms: 1000,
+            continuous_capture: false,   // 默认不持续捕获
+            rollover_time_seconds: None, // 默认不按时间滚动
+            rollover_packet_count: None, // 默认不按数据包数量滚动
+            rollover_file_size_mb: None, // 默认不按文件大小滚动
         }
     }
 }
@@ -95,6 +104,49 @@ impl PcapCapturer {
             }
         }
 
+        // 打开捕获设备
+        let mut cap = Capture::from_device(&*self.options.device_name)?
+            .snaplen(self.options.snaplen)
+            .promisc(true)
+            .timeout(self.options.timeout_ms)
+            .open()?;
+
+        info!("Starting capture on device: {}", self.options.device_name);
+
+        if self.options.continuous_capture {
+            // 持续捕获模式
+            self.continuous_capture_with_rollover(&mut cap)?;
+        } else {
+            // 单次捕获模式
+            let (_file_name, full_path) = self.create_new_file()?;
+            info!("Saving to file: {:?}", full_path);
+
+            // 创建文件并写入数据
+            let file = File::create(&full_path)?;
+            let mut buf_writer = BufWriter::new(file);
+
+            match self.options.file_format {
+                FileFormat::Pcap => {
+                    self.capture_to_pcap(&mut cap, &mut buf_writer)?;
+                }
+                FileFormat::PcapNg => {
+                    self.capture_to_pcapng(&mut cap, &mut buf_writer)?;
+                }
+            }
+
+            info!(
+                "Capture completed. Packets saved to: {}",
+                full_path.display()
+            );
+        }
+
+        Ok(())
+    }
+
+    // 创建新的捕获文件
+    fn create_new_file(&self) -> Result<(String, std::path::PathBuf), SavePcapError> {
+        let path = Path::new(&self.options.file_path);
+
         // 生成带时间戳的文件名
         let now: DateTime<Local> = Local::now();
         let timestamp = now.format("%Y%m%d_%H%M%S").to_string();
@@ -109,35 +161,161 @@ impl PcapCapturer {
         );
         let full_path = path.join(&file_name);
 
-        info!("Starting capture on device: {}", self.options.device_name);
-        info!("Saving to file: {:?}", full_path);
+        Ok((file_name, full_path))
+    }
 
-        // 打开捕获设备
-        let mut cap = Capture::from_device(&*self.options.device_name)?
-            .snaplen(self.options.snaplen)
-            .promisc(true)
-            .timeout(self.options.timeout_ms)
-            .open()?;
+    // 持续捕获并支持滚动保存
+    fn continuous_capture_with_rollover(
+        &self,
+        cap: &mut Capture<Active>,
+    ) -> Result<(), SavePcapError> {
+        let mut packet_count_total = 0;
+        let mut current_file_packet_count = 0;
+        let mut current_file_size_bytes = 0;
+        let mut file_creation_time = std::time::SystemTime::now();
 
-        // 创建文件并写入数据
-        let file = File::create(&full_path)?;
+        // 创建第一个文件
+        let (mut current_file_name, mut current_full_path) = self.create_new_file()?;
+        info!(
+            "Starting continuous capture, first file: {:?}",
+            current_full_path
+        );
+
+        let mut file = File::create(&current_full_path)?;
         let mut buf_writer = BufWriter::new(file);
+        let mut pcap_writer = match PcapWriter::new(&mut buf_writer) {
+            Ok(writer) => writer,
+            Err(e) => return Err(SavePcapError::PcapFileError(e.to_string())),
+        };
 
-        match self.options.file_format {
-            FileFormat::Pcap => {
-                self.capture_to_pcap(&mut cap, &mut buf_writer)?;
+        loop {
+            // 检查是否达到了全局包限制
+            if let Some(global_limit) = self.options.packet_limit {
+                if packet_count_total >= global_limit {
+                    info!(
+                        "Reached global packet limit of {}, stopping capture.",
+                        global_limit
+                    );
+                    break;
+                }
             }
-            FileFormat::PcapNg => {
-                self.capture_to_pcapng(&mut cap, &mut buf_writer)?;
+
+            // 检查是否需要创建新文件
+            let needs_rollover = self.check_needs_rollover(
+                current_file_packet_count,
+                current_file_size_bytes,
+                &file_creation_time,
+            );
+
+            if needs_rollover {
+                // 刷新并关闭当前文件
+                if let Err(e) = pcap_writer.flush() {
+                    error!("Failed to flush file: {}, error: {}", current_file_name, e);
+                }
+                // 只需drop最高层的writer，它会自动关闭和释放下层资源
+                drop(pcap_writer);
+
+                info!(
+                    "Rolling over to new file after {} packets in {}",
+                    current_file_packet_count, current_file_name
+                );
+
+                // 创建新文件
+                let (new_file_name, new_full_path) = self.create_new_file()?;
+                current_file_name = new_file_name;
+                current_full_path = new_full_path;
+
+                // 重置计数器
+                current_file_packet_count = 0;
+                current_file_size_bytes = 0;
+                file_creation_time = std::time::SystemTime::now();
+
+                info!("New file created: {:?}", current_full_path);
+
+                // 打开新文件
+                file = File::create(&current_full_path)?;
+                buf_writer = BufWriter::new(file);
+                pcap_writer = match PcapWriter::new(&mut buf_writer) {
+                    Ok(writer) => writer,
+                    Err(e) => return Err(SavePcapError::PcapFileError(e.to_string())),
+                };
+            }
+
+            match cap.next_packet() {
+                Ok(packet) => {
+                    // 创建PCAP数据包
+                    let pcap_packet = PcapPacket {
+                        timestamp: Duration::new(
+                            packet.header.ts.tv_sec as u64,
+                            packet.header.ts.tv_usec as u32 * 1_000,
+                        ),
+                        orig_len: packet.data.len() as u32,
+                        data: Cow::Owned(packet.data.to_vec()),
+                    };
+
+                    // 写入数据包
+                    if let Err(e) = pcap_writer.write_packet(&pcap_packet) {
+                        error!("Failed to write packet: {}", e);
+                        // 尝试创建新文件继续捕获
+                        continue;
+                    }
+
+                    packet_count_total += 1;
+                    current_file_packet_count += 1;
+                    current_file_size_bytes += packet.data.len() as u64;
+
+                    if packet_count_total % 1000 == 0 {
+                        debug!("Captured total {} packets", packet_count_total);
+                    }
+                }
+                Err(e) => {
+                    if e.to_string() == "timeout expired" {
+                        // 超时，继续捕获
+                        continue;
+                    } else {
+                        error!("Capture error: {}", e);
+                        // 在持续捕获模式下，我们记录错误但继续尝试
+                        std::thread::sleep(Duration::from_secs(1));
+                    }
+                }
             }
         }
 
-        info!(
-            "Capture completed. Packets saved to: {}",
-            full_path.display()
-        );
-
         Ok(())
+    }
+
+    // 检查是否需要滚动到新文件
+    fn check_needs_rollover(
+        &self,
+        current_packet_count: usize,
+        current_file_size_bytes: u64,
+        file_creation_time: &std::time::SystemTime,
+    ) -> bool {
+        // 检查时间间隔
+        if let Some(rollover_seconds) = self.options.rollover_time_seconds {
+            if let Ok(elapsed) = file_creation_time.elapsed() {
+                if elapsed.as_secs() >= rollover_seconds {
+                    return true;
+                }
+            }
+        }
+
+        // 检查数据包数量
+        if let Some(max_packets) = self.options.rollover_packet_count {
+            if current_packet_count >= max_packets {
+                return true;
+            }
+        }
+
+        // 检查文件大小
+        if let Some(max_size_mb) = self.options.rollover_file_size_mb {
+            let max_size_bytes = max_size_mb * 1024 * 1024;
+            if current_file_size_bytes >= max_size_bytes {
+                return true;
+            }
+        }
+
+        false
     }
 
     fn capture_to_pcap<W: Write>(

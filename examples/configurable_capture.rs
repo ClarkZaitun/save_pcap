@@ -14,6 +14,11 @@ struct CaptureConfig {
     packet_limit: Option<usize>,
     snaplen: i32,
     timeout_ms: i32,
+    // 滚动保存相关配置
+    continuous_capture: Option<bool>,
+    rollover_time_seconds: Option<u64>,
+    rollover_packet_count: Option<usize>,
+    rollover_file_size_mb: Option<u64>,
 }
 
 // 命令行参数定义
@@ -51,6 +56,22 @@ struct Args {
     /// 配置文件路径
     #[arg(short, long)]
     config_file: Option<String>,
+
+    /// 启用持续捕获模式
+    #[arg(long, default_value_t = false)]
+    continuous_capture: bool,
+
+    /// 滚动保存时间间隔(秒)
+    #[arg(long)]
+    rollover_time_seconds: Option<u64>,
+
+    /// 每个文件最大数据包数量
+    #[arg(long)]
+    rollover_packet_count: Option<usize>,
+
+    /// 每个文件最大大小(MB)
+    #[arg(long)]
+    rollover_file_size_mb: Option<u64>,
 }
 
 // 将字符串转换为FileFormat枚举
@@ -89,6 +110,14 @@ fn main() -> Result<()> {
             packet_limit: args.packet_limit.or(config.packet_limit),
             snaplen: args.snaplen,
             timeout_ms: args.timeout_ms,
+            continuous_capture: if args.continuous_capture {
+                true
+            } else {
+                config.continuous_capture.unwrap_or(false)
+            },
+            rollover_time_seconds: args.rollover_time_seconds.or(config.rollover_time_seconds),
+            rollover_packet_count: args.rollover_packet_count.or(config.rollover_packet_count),
+            rollover_file_size_mb: args.rollover_file_size_mb.or(config.rollover_file_size_mb),
         }
     } else {
         // 仅使用命令行参数
@@ -104,6 +133,10 @@ fn main() -> Result<()> {
             packet_limit: args.packet_limit,
             snaplen: args.snaplen,
             timeout_ms: args.timeout_ms,
+            continuous_capture: args.continuous_capture,
+            rollover_time_seconds: args.rollover_time_seconds,
+            rollover_packet_count: args.rollover_packet_count,
+            rollover_file_size_mb: args.rollover_file_size_mb,
         }
     };
 
@@ -118,6 +151,23 @@ fn main() -> Result<()> {
     }
     println!("快照长度: {}", options.snaplen);
     println!("超时时间: {}ms", options.timeout_ms);
+    println!(
+        "持续捕获模式: {}",
+        if options.continuous_capture {
+            "已启用"
+        } else {
+            "已禁用"
+        }
+    );
+    if let Some(seconds) = options.rollover_time_seconds {
+        println!("时间滚动间隔: {}秒", seconds);
+    }
+    if let Some(count) = options.rollover_packet_count {
+        println!("数据包数量滚动阈值: {}个", count);
+    }
+    if let Some(size) = options.rollover_file_size_mb {
+        println!("文件大小滚动阈值: {}MB", size);
+    }
 
     // 创建捕获器并开始捕获
     let capturer = PcapCapturer::new(options);

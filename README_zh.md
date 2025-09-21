@@ -14,6 +14,10 @@
 - 提供简单易用的API
 - 支持日志输出
 - 自动检测可用网络设备
+- 持续捕获与文件滚动功能
+  - 基于时间的滚动（例如：每X秒创建新文件）
+  - 基于数据包数量的滚动（例如：每捕获X个数据包创建新文件）
+  - 基于文件大小的滚动（例如：文件达到X MB时创建新文件）
 
 ## 安装
 
@@ -43,6 +47,10 @@ fn main() {
         packet_limit: Some(1000), // 可选，限制捕获1000个数据包
         snaplen: 65535, // 默认捕获长度
         timeout_ms: 1000, // 默认超时时间
+        continuous_capture: false, // 禁用持续捕获
+        rollover_time_seconds: None, // 无时间滚动
+        rollover_packet_count: None, // 无数据包数量滚动
+        rollover_file_size_mb: None, // 无文件大小滚动
     };
     
     // 创建捕获器并开始捕获
@@ -54,6 +62,39 @@ fn main() {
     }
 }
 ```
+
+### 使用持续捕获与文件滚动功能
+
+以下示例演示如何使用持续捕获功能，并设置基于时间、数据包数量或文件大小的文件滚动机制。
+
+```rust
+use save_pcap::{FileFormat, PcapCaptureOptions, PcapCapturer};
+
+fn main() {
+    // 创建包含持续捕获和滚动设置的捕获选项
+    let options = PcapCaptureOptions {
+        device_name: "eth0".to_string(), // 替换为你的实际网卡名称
+        file_prefix: "continuous_capture".to_string(),
+        file_path: "./".to_string(),
+        file_format: FileFormat::Pcap,
+        packet_limit: None, // 持续捕获不设置数据包限制
+        snaplen: 65535,
+        timeout_ms: 1000,
+        continuous_capture: true, // 启用持续捕获
+        rollover_time_seconds: Some(3600), // 每小时创建新文件
+        rollover_packet_count: Some(10000), // 或捕获10,000个数据包时创建新文件
+        rollover_file_size_mb: Some(100), // 或文件大小达到100MB时创建新文件
+    };
+    
+    // 创建捕获器并开始持续捕获
+    let capturer = PcapCapturer::new(options);
+    
+    println!("开始持续捕获。按Ctrl+C停止。");
+    match capturer.capture() {
+        Ok(_) => println!("捕获完成成功"),
+        Err(e) => eprintln!("错误: {}", e),
+    }
+}
 
 ### 使用命令行参数和配置文件
 
@@ -177,6 +218,10 @@ pub struct PcapCaptureOptions {
     pub packet_limit: Option<usize>, // 数据包限制（可选）
     pub snaplen: i32,            // 捕获长度
     pub timeout_ms: i32,         // 超时时间（毫秒）
+    pub continuous_capture: bool, // 启用持续捕获与滚动功能
+    pub rollover_time_seconds: Option<u64>, // 文件滚动的时间间隔（秒）
+    pub rollover_packet_count: Option<usize>, // 文件滚动的数据包数量
+    pub rollover_file_size_mb: Option<u64>, // 文件滚动的文件大小（MB）
 }
 ```
 
@@ -192,6 +237,10 @@ let options = PcapCaptureOptions::default();
 // packet_limit: None,
 // snaplen: 65535,
 // timeout_ms: 1000,
+// continuous_capture: false,
+// rollover_time_seconds: None,
+// rollover_packet_count: None,
+// rollover_file_size_mb: None,
 ```
 
 ### FileFormat
