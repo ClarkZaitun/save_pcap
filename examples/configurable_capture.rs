@@ -93,6 +93,7 @@ fn load_config_from_file(file_path: &str) -> Result<CaptureConfig> {
 }
 
 fn main() -> Result<()> {
+    env_logger::init();
     // 解析命令行参数
     let args = Args::parse();
 

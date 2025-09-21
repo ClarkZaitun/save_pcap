@@ -15,6 +15,8 @@ struct Config {
 }
 
 fn main() {
+    env_logger::init();
+    
     // 从配置文件读取配置信息
     let config_path = Path::new("config/local_config.json");
     let mut config_file = match File::open(&config_path) {

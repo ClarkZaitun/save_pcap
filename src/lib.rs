@@ -100,8 +100,6 @@ impl PcapCapturer {
     }
 
     pub fn capture(&self) -> Result<(), SavePcapError> {
-        env_logger::init();
-
         let path = Path::new(&self.options.file_path);
         if !path.exists() {
             if let Err(e) = fs::create_dir_all(path) {

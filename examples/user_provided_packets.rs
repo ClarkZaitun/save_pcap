@@ -6,6 +6,8 @@ use std::thread;
 use std::time::Duration;
 
 fn main() {
+    env_logger::init();
+    
     // 创建捕获选项，设置为用户提供数据包模式
     let options = PcapCaptureOptions {
         packet_source: save_pcap::PacketSource::UserProvided,

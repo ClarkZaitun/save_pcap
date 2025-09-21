@@ -1,6 +1,8 @@
 use save_pcap::get_available_devices;
 
 fn main() {
+    env_logger::init();
+    
     match get_available_devices() {
         Ok(devices) => {
             println!("可用的网络设备列表:");

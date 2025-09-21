@@ -4,6 +4,8 @@ use save_pcap::{
 use std::io::{self, BufRead, Write};
 
 fn main() {
+    env_logger::init();
+    
     match run() {
         Ok(_) => println!("Capture completed successfully"),
         Err(e) => eprintln!("Error: {}", e),
