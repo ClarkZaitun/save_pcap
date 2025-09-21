@@ -18,6 +18,8 @@
   - 基于时间的滚动（例如：每X秒创建新文件）
   - 基于数据包数量的滚动（例如：每捕获X个数据包创建新文件）
   - 基于文件大小的滚动（例如：文件达到X MB时创建新文件）
+- 支持JSON配置文件，便于配置管理
+- 支持保存用户提供的数据包（用于测试、模拟或其他非直接捕获场景）
 
 ## 安装
 
@@ -122,19 +124,27 @@ cargo run --example configurable_capture -- --device-name "your_network_device" 
 
 #### 通过配置文件配置
 
-1. 创建配置文件 `config.json`:
+库支持JSON格式的配置文件，方便进行设置。配置文件可以放在自定义位置，也可以放在项目根目录的推荐`config/`目录下。
+
+1. **推荐的配置文件位置**：`config/local_config.json`（该路径会被git忽略，以防止提交敏感信息）
+
+2. 创建以下格式的配置文件：
 
 ```json
-{
-  "device_name": "your_network_device",
-  "file_prefix": "capture",
-  "file_path": "./captures/",
-  "file_format": "pcap",
-  "packet_limit": 100,
-  "snaplen": 65535,
-  "timeout_ms": 1000
-}
-```
+{  
+  "device_name": "your_network_device",  
+  "file_prefix": "capture",  
+  "file_path": "./captures/",  
+  "file_format": "pcap",  
+  "packet_limit": 100,  
+  "snaplen": 65535,  
+  "timeout_ms": 1000,  
+  "continuous_capture": false,  
+  "rollover_time_seconds": null,  
+  "rollover_packet_count": null,  
+  "rollover_file_size_mb": null,  
+  "packet_source": "NetworkDevice"  
+}```
 
 2. 使用配置文件运行程序:
 
@@ -148,7 +158,33 @@ cargo run --example configurable_capture -- --config-file config.json
 cargo run --example configurable_capture -- --config-file config.json --file-prefix "special_capture" --packet-limit 200
 ```
 
+3. 使用配置文件运行程序:
+
+```bash
+cargo run --example configurable_capture -- --config-file config/local_config.json
+```
+
+4. 混合使用配置文件和命令行参数(命令行参数优先级更高):
+
+```bash
+cargo run --example configurable_capture -- --config-file config/local_config.json --file-prefix "special_capture" --packet-limit 200
+```
+
 项目根目录下的 `examples/config_example.json` 文件提供了完整的配置示例。
+
+### 本地配置文件使用
+
+库现在内置支持从 `config/local_config.json` 文件加载配置。这种方法具有以下优点：
+
+- 配置信息与代码分离存储
+- 敏感信息（如网络设备标识符）不会被git跟踪
+- 无需修改代码即可轻松修改设置
+
+使用此功能：
+
+1. 如果项目根目录没有 `config` 目录，请创建它
+2. 在 `config` 目录中创建 `local_config.json` 文件并填入你的配置
+3. 运行 `continuous_capture` 等示例时，库会自动加载此配置
 
 ### 示例程序
 
@@ -218,6 +254,7 @@ pub struct PcapCaptureOptions {
     pub packet_limit: Option<usize>, // 数据包限制（可选）
     pub snaplen: i32,            // 捕获长度
     pub timeout_ms: i32,         // 超时时间（毫秒）
+    pub packet_source: PacketSource, // 数据包来源（网络设备或用户提供）
     pub continuous_capture: bool, // 启用持续捕获与滚动功能
     pub rollover_time_seconds: Option<u64>, // 文件滚动的时间间隔（秒）
     pub rollover_packet_count: Option<usize>, // 文件滚动的数据包数量
@@ -237,6 +274,7 @@ let options = PcapCaptureOptions::default();
 // packet_limit: None,
 // snaplen: 65535,
 // timeout_ms: 1000,
+// packet_source: PacketSource::NetworkDevice,
 // continuous_capture: false,
 // rollover_time_seconds: None,
 // rollover_packet_count: None,
@@ -267,9 +305,156 @@ pub fn new(options: PcapCaptureOptions) -> Self
 
 // 开始捕获并保存到文件
 pub fn capture(&self) -> Result<(), SavePcapError>
+
+// 开始捕获过程
+pub fn start_capture(&mut self) -> Result<(), SavePcapError>
+
+// 获取数据包发送器，用于发送用户提供的数据包
+// 仅在packet_source设置为UserProvided时可用
+pub fn get_packet_sender(&self) -> Option<Sender<UserPacket>>
 ```
 
-### 错误处理
+### 用户数据包结构体 (UserPacket)
+
+表示可保存到pcap文件的用户提供的数据包的结构体。
+
+```rust
+pub struct UserPacket {
+    pub data: Vec<u8>,           // 原始数据包数据
+    pub timestamp: Option<Duration>, // 数据包的可选时间戳
+}
+```
+
+### 数据包来源枚举 (PacketSource)
+
+表示要捕获的数据包来源的枚举。
+
+```rust
+#[derive(Debug, Clone)]
+pub enum PacketSource {
+    NetworkDevice,  // 从网络设备捕获数据包
+    UserProvided    // 使用用户提供的数据包
+}
+```
+
+## 使用用户提供的数据包
+
+该库支持将用户提供的数据包保存到pcap文件，这在测试、模拟或保存不是直接从网络接口捕获的数据包时非常有用。
+
+### 基本用法
+
+以下是使用此功能的分步指南：
+
+1. **配置为用户提供数据包模式**
+   创建`PcapCaptureOptions`时，将`packet_source`选项设置为`UserProvided`。
+
+2. **获取数据包发送器**
+   使用`get_packet_sender()`方法获取发送数据包的发送器。
+
+3. **发送你的数据包**
+   创建包含你的数据包数据的`UserPacket`对象，并通过发送器发送它们。
+
+4. **启动捕获过程**
+   调用`capture()`开始处理并保存数据包。
+
+### 示例
+
+```rust
+use save_pcap::{FileFormat, PcapCaptureOptions, PcapCapturer, UserPacket};
+use std::thread;
+use std::time::Duration;
+
+fn main() {
+    // 配置用于用户提供数据包的捕获选项
+    let options = PcapCaptureOptions {
+        packet_source: save_pcap::PacketSource::UserProvided,
+        file_prefix: "user_packets".to_string(),
+        file_path: ".".to_string(),
+        file_format: FileFormat::Pcap,
+        snaplen: 65535,
+        timeout_ms: 1000,
+        // 根据需要添加其他选项
+        ..Default::default()
+    };
+
+    // 创建捕获器
+    let capturer = PcapCapturer::new(options);
+
+    // 获取数据包发送器
+    let packet_sender = match capturer.get_packet_sender() {
+        Some(sender) => sender,
+        None => {
+            eprintln!("获取数据包发送器失败");
+            return;
+        }
+    };
+
+    // 启动一个线程来提供数据包
+    let sender_thread = thread::spawn(move || {
+        // 发送示例数据包
+        for i in 0..10 {
+            // 创建你的数据包数据
+            let packet_data = vec![/* 你的数据包字节内容 */];
+
+            // 创建用户数据包
+            let user_packet = UserPacket {
+                data: packet_data,
+                timestamp: None, // 使用当前时间，或提供你自己的时间戳
+            };
+
+            // 发送数据包
+            if let Err(err) = packet_sender.send(user_packet) {
+                eprintln!("发送数据包失败: {:?}", err);
+                break;
+            }
+
+            thread::sleep(Duration::from_millis(100));
+        }
+    });
+
+    // 开始捕获
+    if let Err(err) = capturer.capture() {
+        eprintln!("捕获错误: {:?}", err);
+    }
+
+    // 等待发送线程完成
+    if let Err(err) = sender_thread.join() {
+        eprintln!("发送线程错误: {:?}", err);
+    }
+
+    // 开始捕获
+    if let Err(err) = capturer.capture() {
+        eprintln!("捕获错误: {:?}", err);
+    }
+
+    // 等待发送线程完成
+    if let Err(err) = sender_thread.join() {
+        eprintln!("发送线程错误: {:?}", err);
+    }
+}
+```
+
+### 高级示例：持续捕获与文件滚动
+
+你还可以将用户提供的数据包与持续捕获和文件滚动功能结合使用：
+
+```rust
+let options = PcapCaptureOptions {
+    packet_source: save_pcap::PacketSource::UserProvided,
+    file_prefix: "user_packets".to_string(),
+    file_path: ".".to_string(),
+    file_format: FileFormat::Pcap,
+    continuous_capture: true,
+    rollover_packet_count: Some(20), // 每20个数据包滚动一次文件
+    packet_limit: Some(100),         // 捕获100个数据包后停止
+    // 根据需要添加其他选项
+    ..Default::default()
+};
+
+// 其余代码与基本示例相同
+```
+
+## 错误处理
 
 库定义了`SavePcapError`枚举类型，用于处理各种可能的错误情况：
 

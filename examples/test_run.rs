@@ -3,7 +3,7 @@ use save_pcap::{FileFormat, PcapCaptureOptions, PcapCapturer};
 fn main() {
     // 设置捕获选项
     let options = PcapCaptureOptions {
-        device_name: "your_network_device".to_string(), // 替换为你的实际网卡名称
+        packet_source: save_pcap::PacketSource::NetworkDevice("your_network_device".to_string()), // 替换为你的实际网卡名称
         file_prefix: "capture_test".to_string(),
         file_path: "./".to_string(),
         file_format: FileFormat::Pcap,

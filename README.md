@@ -18,6 +18,8 @@ A cross-platform library written in Rust for capturing network frames from a spe
   - Time-based rollover (e.g., create new file every X seconds)
   - Packet count-based rollover (e.g., create new file after X packets)
   - File size-based rollover (e.g., create new file after X MB)
+- JSON configuration file support for easy setup
+- Support for saving user-provided packets (for testing, simulation, or other non-direct capture scenarios)
 
 ## Installation
 
@@ -122,7 +124,11 @@ Command line arguments explanation:
 
 #### Configuring via Configuration File
 
-1. Create a configuration file `config.json`:
+The library supports JSON configuration files for easy setup. Configuration files can be placed in a custom location or in the recommended `config/` directory at the project root.
+
+1. **Recommended configuration file location**: `config/local_config.json` (this path is ignored by git to prevent sensitive information from being committed)
+
+2. Create a configuration file with the following format:
 
 ```json
 {
@@ -132,9 +138,12 @@ Command line arguments explanation:
   "file_format": "pcap",
   "packet_limit": 100,
   "snaplen": 65535,
-  "timeout_ms": 1000
-}
-```
+  "timeout_ms": 1000,
+  "continuous_capture": false,
+  "rollover_time_seconds": null,
+  "rollover_packet_count": null,
+  "rollover_file_size_mb": null
+}```
 
 2. Run the program with the configuration file:
 
@@ -148,7 +157,33 @@ cargo run --example configurable_capture -- --config-file config.json
 cargo run --example configurable_capture -- --config-file config.json --file-prefix "special_capture" --packet-limit 200
 ```
 
+3. Run the program with the configuration file:
+
+```bash
+cargo run --example configurable_capture -- --config-file config/local_config.json
+```
+
+4. Mixing configuration file and command line arguments (command line arguments have higher priority):
+
+```bash
+cargo run --example configurable_capture -- --config-file config/local_config.json --file-prefix "special_capture" --packet-limit 200
+```
+
 A complete configuration example is provided in the `examples/config_example.json` file in the project root directory.
+
+### Local Configuration File Usage
+
+The library now includes built-in support for loading configuration from a JSON file in `config/local_config.json`. This approach offers several advantages:
+
+- Configuration information is stored separately from code
+- Sensitive information (like network device identifiers) is not tracked by git
+- Easy to modify settings without changing code
+
+To use this feature:
+
+1. Create a `config` directory at the project root if it doesn't exist
+2. Create a `local_config.json` file inside the `config` directory with your configuration
+3. The library will automatically load this configuration when running examples like `continuous_capture`
 
 ### Example Programs
 
@@ -267,9 +302,147 @@ pub fn new(options: PcapCaptureOptions) -> Self
 
 // Start capturing and save to file
 pub fn capture(&self) -> Result<(), SavePcapError>
+
+// Start capture process
+pub fn start_capture(&mut self) -> Result<(), SavePcapError>
+
+// Get a packet sender for sending user-provided packets
+// Only available when packet_source is set to UserProvided
+pub fn get_packet_sender(&self) -> Option<Sender<UserPacket>>
 ```
 
-### Error Handling
+### UserPacket
+
+A struct representing a user-provided packet that can be saved to a pcap file.
+
+```rust
+pub struct UserPacket {
+    pub data: Vec<u8>,           // The raw packet data
+    pub timestamp: Option<Duration>, // Optional timestamp for the packet
+}
+```
+
+### PacketSource
+
+An enum representing the source of packets to capture.
+
+```rust
+#[derive(Debug, Clone)]
+pub enum PacketSource {
+    NetworkDevice,  // Capture packets from a network device
+    UserProvided    // Use packets provided by the user
+}
+```
+```
+
+## Using User-Provided Packets
+
+The library supports saving user-provided packets to pcap files, which is useful for testing, simulation, or when you want to save packets that weren't captured directly from a network interface.
+
+### Basic Usage
+
+Here's a step-by-step guide to using this feature:
+
+1. **Configure for User-Provided Packets**
+   Set the `packet_source` option to `UserProvided` when creating `PcapCaptureOptions`.
+
+2. **Get the Packet Sender**
+   Use the `get_packet_sender()` method to obtain a sender for your packets.
+
+3. **Send Your Packets**
+   Create `UserPacket` objects with your packet data and send them through the sender.
+
+4. **Start the Capture Process**
+   Call `capture()` to start processing and saving the packets.
+
+### Example
+
+```rust
+use save_pcap::{FileFormat, PcapCaptureOptions, PcapCapturer, UserPacket};
+use std::thread;
+use std::time::Duration;
+
+fn main() {
+    // Configure capture options for user-provided packets
+    let options = PcapCaptureOptions {
+        packet_source: save_pcap::PacketSource::UserProvided,
+        file_prefix: "user_packets".to_string(),
+        file_path: ".".to_string(),
+        file_format: FileFormat::Pcap,
+        snaplen: 65535,
+        timeout_ms: 1000,
+        // Additional options as needed
+        ..Default::default()
+    };
+
+    // Create the capturer
+    let capturer = PcapCapturer::new(options);
+
+    // Get the packet sender
+    let packet_sender = match capturer.get_packet_sender() {
+        Some(sender) => sender,
+        None => {
+            eprintln!("Failed to get packet sender");
+            return;
+        }
+    };
+
+    // Start a thread to provide packets
+    let sender_thread = thread::spawn(move || {
+        // Send sample packets
+        for i in 0..10 {
+            // Create your packet data
+            let packet_data = vec![/* your packet bytes here */];
+
+            // Create a user packet
+            let user_packet = UserPacket {
+                data: packet_data,
+                timestamp: None, // Use current time, or provide your own
+            };
+
+            // Send the packet
+            if let Err(err) = packet_sender.send(user_packet) {
+                eprintln!("Failed to send packet: {:?}", err);
+                break;
+            }
+
+            thread::sleep(Duration::from_millis(100));
+        }
+    });
+
+    // Start capturing
+    if let Err(err) = capturer.capture() {
+        eprintln!("Capture error: {:?}", err);
+    }
+
+    // Wait for the sender thread to complete
+    if let Err(err) = sender_thread.join() {
+        eprintln!("Sender thread error: {:?}", err);
+    }
+}
+```
+
+### Advanced Example: Continuous Capture with Rollover
+
+You can also use user-provided packets with continuous capture and file rollover functionality:
+
+```rust
+let options = PcapCaptureOptions {
+    packet_source: save_pcap::PacketSource::UserProvided,
+    file_prefix: "user_packets".to_string(),
+    file_path: ".".to_string(),
+    file_format: FileFormat::Pcap,
+    continuous_capture: true,
+    rollover_packet_count: Some(20), // Rollover after 20 packets
+    packet_limit: Some(100),         // Stop after 100 packets
+    // Other options as needed
+    ..Default::default()
+};
+
+// Rest of the code remains the same as the basic example
+```
+
+## Error Handling
 
 The library defines the `SavePcapError` enum type for handling various possible error situations:
 

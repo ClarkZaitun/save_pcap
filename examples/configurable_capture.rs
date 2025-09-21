@@ -103,7 +103,9 @@ fn main() -> Result<()> {
 
         // 创建选项，命令行参数优先级高于配置文件
         PcapCaptureOptions {
-            device_name: args.device_name.unwrap_or(config.device_name),
+            packet_source: save_pcap::PacketSource::NetworkDevice(
+                args.device_name.unwrap_or(config.device_name),
+            ),
             file_prefix: args.file_prefix.unwrap_or(config.file_prefix),
             file_path: args.file_path.unwrap_or(config.file_path),
             file_format: str_to_file_format(&args.file_format.unwrap_or(config.file_format))?,
@@ -122,9 +124,9 @@ fn main() -> Result<()> {
     } else {
         // 仅使用命令行参数
         PcapCaptureOptions {
-            device_name: args.device_name.ok_or_else(|| {
-                anyhow::anyhow!("必须提供网络设备名称，请使用--device-name参数或配置文件")
-            })?,
+            packet_source: save_pcap::PacketSource::NetworkDevice(args.device_name.ok_or_else(
+                || anyhow::anyhow!("必须提供网络设备名称，请使用--device-name参数或配置文件"),
+            )?),
             file_prefix: args.file_prefix.ok_or_else(|| {
                 anyhow::anyhow!("必须提供文件前缀，请使用--file-prefix参数或配置文件")
             })?,
@@ -142,7 +144,13 @@ fn main() -> Result<()> {
 
     // 打印配置信息
     println!("开始捕获数据包...");
-    println!("设备名称: {}", options.device_name);
+    println!(
+        "设备名称: {:?}",
+        match &options.packet_source {
+            save_pcap::PacketSource::NetworkDevice(name) => name.as_str(),
+            _ => "用户提供的数据包",
+        }
+    );
     println!("输出路径: {}", options.file_path);
     println!("文件前缀: {}", options.file_prefix);
     println!("文件格式: {:?}", options.file_format);

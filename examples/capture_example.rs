@@ -165,7 +165,7 @@ fn run() -> Result<(), SavePcapError> {
 
     // 创建捕获选项
     let options = PcapCaptureOptions {
-        device_name,
+        packet_source: save_pcap::PacketSource::NetworkDevice(device_name),
         file_prefix,
         file_path,
         file_format,
