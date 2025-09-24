@@ -54,10 +54,10 @@ fn main() {
         rollover_packet_count: None, // No packet count-based rollover
         rollover_file_size_mb: None, // No file size-based rollover
     };
-    
+
     // Create capturer and start capturing
     let capturer = PcapCapturer::new(options);
-    
+
     match capturer.capture() {
         Ok(_) => println!("Capture completed successfully"),
         Err(e) => eprintln!("Error: {}", e),
@@ -87,16 +87,17 @@ fn main() {
         rollover_packet_count: Some(10000), // Or when 10,000 packets are captured
         rollover_file_size_mb: Some(100), // Or when file size reaches 100 MB
     };
-    
+
     // Create capturer and start continuous capturing
     let capturer = PcapCapturer::new(options);
-    
+
     println!("Starting continuous capture. Press Ctrl+C to stop.");
     match capturer.capture() {
         Ok(_) => println!("Capture completed successfully"),
         Err(e) => eprintln!("Error: {}", e),
     }
 }
+```
 
 ### Using Command Line Arguments and Configuration Files
 
@@ -143,7 +144,8 @@ The library supports JSON configuration files for easy setup. Configuration file
   "rollover_time_seconds": null,
   "rollover_packet_count": null,
   "rollover_file_size_mb": null
-}```
+}
+```
 
 2. Run the program with the configuration file:
 
@@ -332,7 +334,6 @@ pub enum PacketSource {
     NetworkDevice,  // Capture packets from a network device
     UserProvided    // Use packets provided by the user
 }
-```
 ```
 
 ## Using User-Provided Packets

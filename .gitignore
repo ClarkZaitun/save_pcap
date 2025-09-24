@@ -47,4 +47,6 @@ Thumbs.db
 *.pcapng.gz
 
 # Configuration files
-/config/
+/config/local_config.json
+
+docs/

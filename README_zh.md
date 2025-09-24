@@ -54,10 +54,10 @@ fn main() {
         rollover_packet_count: None, // 无数据包数量滚动
         rollover_file_size_mb: None, // 无文件大小滚动
     };
-    
+
     // 创建捕获器并开始捕获
     let capturer = PcapCapturer::new(options);
-    
+
     match capturer.capture() {
         Ok(_) => println!("捕获完成成功"),
         Err(e) => eprintln!("错误: {}", e),
@@ -87,16 +87,17 @@ fn main() {
         rollover_packet_count: Some(10000), // 或捕获10,000个数据包时创建新文件
         rollover_file_size_mb: Some(100), // 或文件大小达到100MB时创建新文件
     };
-    
+
     // 创建捕获器并开始持续捕获
     let capturer = PcapCapturer::new(options);
-    
+
     println!("开始持续捕获。按Ctrl+C停止。");
     match capturer.capture() {
         Ok(_) => println!("捕获完成成功"),
         Err(e) => eprintln!("错误: {}", e),
     }
 }
+```
 
 ### 使用命令行参数和配置文件
 
@@ -131,20 +132,21 @@ cargo run --example configurable_capture -- --device-name "your_network_device" 
 2. 创建以下格式的配置文件：
 
 ```json
-{  
-  "device_name": "your_network_device",  
-  "file_prefix": "capture",  
-  "file_path": "./captures/",  
-  "file_format": "pcap",  
-  "packet_limit": 100,  
-  "snaplen": 65535,  
-  "timeout_ms": 1000,  
-  "continuous_capture": false,  
-  "rollover_time_seconds": null,  
-  "rollover_packet_count": null,  
-  "rollover_file_size_mb": null,  
-  "packet_source": "NetworkDevice"  
-}```
+{
+  "device_name": "your_network_device",
+  "file_prefix": "capture",
+  "file_path": "./captures/",
+  "file_format": "pcap",
+  "packet_limit": 100,
+  "snaplen": 65535,
+  "timeout_ms": 1000,
+  "continuous_capture": false,
+  "rollover_time_seconds": null,
+  "rollover_packet_count": null,
+  "rollover_file_size_mb": null,
+  "packet_source": "NetworkDevice"
+}
+```
 
 2. 使用配置文件运行程序:
 
